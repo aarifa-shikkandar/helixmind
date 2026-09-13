@@ -13,6 +13,13 @@ function DNAAnalysis() {
   const [selectedFile, setSelectedFile] = useState(null);
 
   // -----------------------------
+  // Backend API URL
+  // -----------------------------
+  const API_BASE_URL =
+    import.meta.env.VITE_API_BASE_URL ||
+    "https://helixmind-ursk.onrender.com";
+
+  // -----------------------------
   // Manual gene change
   // -----------------------------
   const handleChange = (gene, value) => {
@@ -32,7 +39,7 @@ function DNAAnalysis() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/predict",
+        `${API_BASE_URL}/predict`,
         {
           method: "POST",
           headers: {
@@ -45,15 +52,27 @@ function DNAAnalysis() {
       );
 
       if (!response.ok) {
-        throw new Error("Prediction request failed");
+        let errorMessage = "Prediction request failed";
+
+        try {
+          const errorData = await response.json();
+          errorMessage =
+            errorData.detail || errorMessage;
+        } catch {
+          // Keep default error message
+        }
+
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
       setResult(data);
     } catch (err) {
       console.error(err);
+
       setError(
-        "Backend connection failed. Make sure FastAPI is running."
+        err.message ||
+          "Backend connection failed. Please try again."
       );
     } finally {
       setLoading(false);
@@ -95,7 +114,7 @@ function DNAAnalysis() {
       formData.append("file", selectedFile);
 
       const response = await fetch(
-        "http://127.0.0.1:8000/analyze-file",
+        `${API_BASE_URL}/analyze-file`,
         {
           method: "POST",
           body: formData,
@@ -107,7 +126,8 @@ function DNAAnalysis() {
 
         try {
           const errorData = await response.json();
-          errorMessage = errorData.detail || errorMessage;
+          errorMessage =
+            errorData.detail || errorMessage;
         } catch {
           // Keep default error message
         }
@@ -121,7 +141,8 @@ function DNAAnalysis() {
       console.error(err);
 
       setError(
-        err.message || "Unable to analyze the genomic file."
+        err.message ||
+          "Unable to analyze the genomic file."
       );
     } finally {
       setLoading(false);
