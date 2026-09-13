@@ -2,13 +2,15 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Dict
-from pathlib import Path
 import gzip
-import csv
 import io
 
 from app.predict import predict_cancer
 
+
+# =========================================================
+# HELIXMIND FASTAPI APPLICATION
+# =========================================================
 
 app = FastAPI(
     title="HelixMind DNA Precision Intelligence System",
@@ -17,14 +19,16 @@ app = FastAPI(
 )
 
 
-# -----------------------------
-# CORS
-# -----------------------------
+# =========================================================
+# CORS CONFIGURATION
+# =========================================================
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "http://127.0.0.1:3000"
+        "http://127.0.0.1:3000",
+        "https://helixmind-frontend-n9eb.onrender.com"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -32,9 +36,10 @@ app.add_middleware(
 )
 
 
-# -----------------------------
-# Root
-# -----------------------------
+# =========================================================
+# ROOT ENDPOINT
+# =========================================================
+
 @app.get("/")
 def root():
     return {
@@ -43,9 +48,10 @@ def root():
     }
 
 
-# -----------------------------
-# Health Check
-# -----------------------------
+# =========================================================
+# HEALTH CHECK
+# =========================================================
+
 @app.get("/health")
 def health():
     return {
@@ -53,9 +59,10 @@ def health():
     }
 
 
-# -----------------------------
-# Manual DNA Prediction
-# -----------------------------
+# =========================================================
+# MANUAL DNA PREDICTION
+# =========================================================
+
 class DNAInput(BaseModel):
     genes: Dict[str, int]
 
@@ -64,6 +71,7 @@ class DNAInput(BaseModel):
 def predict(data: DNAInput):
 
     try:
+
         result = predict_cancer(data.genes)
 
         return {
@@ -73,21 +81,28 @@ def predict(data: DNAInput):
         }
 
     except Exception as e:
+
         raise HTTPException(
             status_code=500,
             detail=str(e)
         )
 
 
-# -----------------------------
-# Genomic File Analysis
-# -----------------------------
+# =========================================================
+# GENOMIC FILE ANALYSIS
+# =========================================================
+
 @app.post("/analyze-file")
 async def analyze_file(file: UploadFile = File(...)):
 
     filename = file.filename or ""
 
+    # -----------------------------------------------------
+    # Check file extension
+    # -----------------------------------------------------
+
     if not filename.lower().endswith(".gz"):
+
         raise HTTPException(
             status_code=400,
             detail="Please upload a .gz genomic file."
@@ -95,10 +110,16 @@ async def analyze_file(file: UploadFile = File(...)):
 
     try:
 
-        # Read uploaded file into memory
+        # -------------------------------------------------
+        # Read uploaded file
+        # -------------------------------------------------
+
         contents = await file.read()
 
+        # -------------------------------------------------
         # Open gzip file
+        # -------------------------------------------------
+
         with gzip.open(
             io.BytesIO(contents),
             mode="rt",
@@ -106,22 +127,31 @@ async def analyze_file(file: UploadFile = File(...)):
             errors="ignore"
         ) as f:
 
+            # ---------------------------------------------
             # Read header
+            # ---------------------------------------------
+
             header_line = f.readline()
 
             if not header_line:
+
                 raise HTTPException(
                     status_code=400,
                     detail="Empty genomic file."
                 )
 
             # Remove BOM and whitespace
+
             header_line = header_line.lstrip("\ufeff").strip()
 
             # MAF uses TAB separation
+
             headers = header_line.split("\t")
 
+            # ---------------------------------------------
             # Find Hugo_Symbol column
+            # ---------------------------------------------
+
             gene_index = None
 
             for i, column in enumerate(headers):
@@ -129,16 +159,21 @@ async def analyze_file(file: UploadFile = File(...)):
                 column = column.strip()
 
                 if column == "Hugo_Symbol":
+
                     gene_index = i
                     break
 
             if gene_index is None:
+
                 raise HTTPException(
                     status_code=400,
                     detail="Hugo_Symbol column was not found."
                 )
 
+            # ---------------------------------------------
             # Extract genes
+            # ---------------------------------------------
+
             genes_found = set()
 
             for line in f:
@@ -158,14 +193,24 @@ async def analyze_file(file: UploadFile = File(...)):
                 if gene and gene != ".":
                     genes_found.add(gene)
 
+        # -------------------------------------------------
         # Convert genes into model input
+        # -------------------------------------------------
+
         gene_data = {
             gene: 1
             for gene in genes_found
         }
 
-        # Predict cancer type
+        # -------------------------------------------------
+        # Prediction
+        # -------------------------------------------------
+
         result = predict_cancer(gene_data)
+
+        # -------------------------------------------------
+        # Return result
+        # -------------------------------------------------
 
         return {
             "status": "success",
@@ -177,15 +222,18 @@ async def analyze_file(file: UploadFile = File(...)):
         }
 
     except HTTPException:
+
         raise
 
     except gzip.BadGzipFile:
+
         raise HTTPException(
             status_code=400,
             detail="Invalid gzip genomic file."
         )
 
     except Exception as e:
+
         print("FILE ANALYSIS ERROR:", str(e))
 
         raise HTTPException(
